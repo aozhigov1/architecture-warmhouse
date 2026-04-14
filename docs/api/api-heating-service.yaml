@@ -1,0 +1,900 @@
+openapi: 3.0.3
+info:
+  title: Heating Service API
+  description: |
+    API для управления отоплением в экосистеме Warmhouse.
+
+    **Основные возможности:**
+    - Управление зонами отопления
+    - Установка целевой температуры
+    - Управление режимами работы
+    - Настройка расписания отопления
+    - Мониторинг температуры
+    - Оптимизация энергопотребления
+
+    **Аутентификация:** JWT Bearer Token
+
+    **Базовый URL:** `https://api.warmhouse.com/heating/v1`
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8081/heating/v1
+    description: Local
+
+security:
+  - BearerAuth: [ ]
+
+tags:
+  - name: zones
+    description: Зоны отопления
+  - name: schedule
+    description: Расписание отопления
+  - name: temperature
+    description: Температура
+  - name: optimization
+    description: Оптимизация энергопотребления
+
+paths:
+  /zones:
+    get:
+      summary: Получить список зон отопления
+      description: Возвращает все зоны отопления для дома пользователя
+      tags:
+        - zones
+      parameters:
+        - name: house_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: room_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Список зон отопления
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HeatingZone'
+              examples:
+                success:
+                  value:
+                    data:
+                      - id: "hz-001"
+                        house_id: "house-001"
+                        room_id: "room-001"
+                        name: "Гостиная"
+                        target_temperature: 22.0
+                        current_temperature: 21.5
+                        mode: "comfort"
+                        schedule_enabled: true
+                        created_at: "2026-01-15T10:00:00Z"
+                        updated_at: "2026-04-05T12:30:00Z"
+                      - id: "hz-002"
+                        house_id: "house-001"
+                        name: "Спальня"
+                        target_temperature: 20.0
+                        current_temperature: 19.8
+                        mode: "eco"
+                        schedule_enabled: true
+                        created_at: "2026-01-15T10:00:00Z"
+                        updated_at: "2026-04-05T12:30:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      summary: Создать зону отопления
+      description: Создаёт новую зону отопления
+      tags:
+        - zones
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HeatingZoneCreate'
+            examples:
+              with_room:
+                summary: Зона для комнаты
+                value:
+                  house_id: "house-001"
+                  room_id: "room-001"
+                  name: "Гостиная"
+                  target_temperature: 22.0
+                  mode: "comfort"
+                  schedule_enabled: true
+              whole_house:
+                summary: Весь дом
+                value:
+                  house_id: "house-001"
+                  name: "Весь дом"
+                  target_temperature: 21.0
+                  mode: "eco"
+                  schedule_enabled: false
+      responses:
+        '200':
+          description: Зона отопления создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeatingZone'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /zones/{zoneId}:
+    parameters:
+      - $ref: '#/components/parameters/ZoneId'
+
+    get:
+      summary: Получить зону отопления
+      tags:
+        - zones
+      responses:
+        '200':
+          description: Зона отопления
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeatingZone'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: Обновить зону отопления
+      tags:
+        - zones
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HeatingZoneUpdate'
+            examples:
+              change_temperature:
+                summary: Изменить целевую температуру
+                value:
+                  target_temperature: 23.0
+              change_mode:
+                summary: Изменить режим
+                value:
+                  mode: "comfort"
+      responses:
+        '200':
+          description: Зона обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeatingZone'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Удалить зону отопления
+      tags:
+        - zones
+      responses:
+        '204':
+          description: Зона удалена
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /zones/{zoneId}/mode:
+    parameters:
+      - $ref: '#/components/parameters/ZoneId'
+
+    put:
+      summary: Установить режим зоны
+      description: |
+        Изменяет режим работы зоны отопления.
+        Доступные режимы:
+        - **comfort** - комфортный режим (высокая температура)
+        - **eco** - экономичный режим (сниженная температура)
+        - **away** - режим отсутствия (минимальная температура)
+        - **off** - отопление выключено
+      tags:
+        - zones
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+                  enum: [ comfort, eco, away, off ]
+                duration_minutes:
+                  type: integer
+                  description: |
+                    Длительность режима в минутах.
+                    Если указано, режим автоматически сменится
+                    на предыдущий по истечении времени.
+                    Если не указано, режим устанавливается постоянно.
+                  example: 120
+              required:
+                - mode
+            examples:
+              comfort:
+                summary: Комфортный режим на 2 часа
+                value:
+                  mode: "comfort"
+                  duration_minutes: 120
+              eco_permanent:
+                summary: Экономичный режим постоянно
+                value:
+                  mode: "eco"
+      responses:
+        '200':
+          description: Режим установлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeatingZone'
+              examples:
+                comfort_set:
+                  value:
+                    id: "hz-001"
+                    house_id: "house-001"
+                    name: "Гостиная"
+                    target_temperature: 22.0
+                    current_temperature: 21.5
+                    mode: "comfort"
+                    schedule_enabled: true
+                    mode_expires_at: "2026-04-05T14:30:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /zones/{zoneId}/temperature:
+    parameters:
+      - $ref: '#/components/parameters/ZoneId'
+
+    put:
+      summary: Установить целевую температуру
+      description: |
+        Устанавливает целевую температуру для зоны.
+        Диапазон: 5.0 - 30.0 °C
+      tags:
+        - temperature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target_temperature:
+                  type: number
+                  format: float
+                  minimum: 5.0
+                  maximum: 30.0
+                  description: Целевая температура в градусах Цельсия
+              required:
+                - target_temperature
+            examples:
+              warm:
+                summary: Тёпло (22°C)
+                value:
+                  target_temperature: 22.0
+              cool:
+                summary: Прохладно (18°C)
+                value:
+                  target_temperature: 18.0
+      responses:
+        '200':
+          description: Температура установлена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  zone_id:
+                    type: string
+                    format: uuid
+                  target_temperature:
+                    type: number
+                    format: float
+                  previous_temperature:
+                    type: number
+                    format: float
+                  estimated_time_to_target:
+                    type: integer
+                    description: Время достижения в минутах
+              examples:
+                heating_up:
+                  summary: Нагрев до 22°C
+                  value:
+                    zone_id: "hz-001"
+                    target_temperature: 22.0
+                    previous_temperature: 20.5
+                    estimated_time_to_target: 15
+        '400':
+          description: Температура вне допустимого диапазона
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Bad Request"
+                message: "Температура должна быть в диапазоне от 5.0 до 30.0 °C"
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /zones/{zoneId}/temperature/history:
+    parameters:
+      - $ref: '#/components/parameters/ZoneId'
+    get:
+      summary: Получить историю температуры
+      description: |
+        Возвращает историю изменения температуры в зоне.
+        Поддерживает агрегацию по различным интервалам.
+      tags:
+        - temperature
+      parameters:
+        - name: from
+          in: query
+          description: Начало периода
+          schema:
+            type: string
+            format: date-time
+          example: "2026-04-01T00:00:00Z"
+        - name: to
+          in: query
+          description: Конец периода
+          schema:
+            type: string
+            format: date-time
+          example: "2026-04-05T23:59:59Z"
+        - name: interval
+          in: query
+          description: Интервал агрегации
+          schema:
+            type: string
+            enum: [ raw, 5min, 15min, 1hour, 1day ]
+            default: raw
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 1000
+            maximum: 10000
+      responses:
+        '200':
+          description: История температуры
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  zone_id:
+                    type: string
+                    format: uuid
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        timestamp:
+                          type: string
+                          format: date-time
+                        temperature:
+                          type: number
+                          format: float
+                        target_temperature:
+                          type: number
+                          format: float
+                        mode:
+                          type: string
+              examples:
+                hourly:
+                  summary: Почасовые данные
+                  value:
+                    zone_id: "hz-001"
+                    data:
+                      - timestamp: "2026-04-05T10:00:00Z"
+                        temperature: 21.2
+                        target_temperature: 22.0
+                        mode: "comfort"
+                      - timestamp: "2026-04-05T11:00:00Z"
+                        temperature: 21.8
+                        target_temperature: 22.0
+                        mode: "comfort"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /zones/{zoneId}/schedule:
+    parameters:
+      - $ref: '#/components/parameters/ZoneId'
+
+    get:
+      summary: Получить расписание зоны
+      tags:
+        - schedule
+      responses:
+        '200':
+          description: Расписание получено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  zone_id:
+                    type: string
+                    format: uuid
+                  schedule:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/HeatingSchedule'
+              examples:
+                weekly_schedule:
+                  value:
+                    zone_id: "hz-001"
+                    schedule:
+                      monday:
+                        - time: "06:00"
+                          mode: "comfort"
+                          target_temperature: 22.0
+                        - time: "23:00"
+                          mode: "eco"
+                          target_temperature: 18.0
+                      tuesday:
+                        - time: "06:00"
+                          mode: "comfort"
+                          target_temperature: 22.0
+                        - time: "23:00"
+                          mode: "eco"
+                          target_temperature: 18.0
+                      weekend:
+                        - time: "08:00"
+                          mode: "comfort"
+                          target_temperature: 22.0
+
+    put:
+      summary: Обновить расписание зоны
+      tags:
+        - schedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                schedule:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        time:
+                          type: string
+                          pattern: "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
+                        mode:
+                          type: string
+                          enum: [ comfort, eco, away, off ]
+                        target_temperature:
+                          type: number
+                          format: float
+                          minimum: 5.0
+                          maximum: 30.0
+                      required:
+                        - time
+                        - mode
+            examples:
+              simple:
+                summary: Простое расписание
+                value:
+                  schedule:
+                    monday:
+                      - time: "06:00"
+                        mode: "comfort"
+                        target_temperature: 22.0
+                      - time: "23:00"
+                        mode: "eco"
+                        target_temperature: 18.0
+                    tuesday:
+                      - time: "06:00"
+                        mode: "comfort"
+                        target_temperature: 22.0
+      responses:
+        '200':
+          description: Расписание обновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeatingZone'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /zones/{zoneId}/devices:
+    parameters:
+      - $ref: '#/components/parameters/ZoneId'
+
+    get:
+      summary: Получить устройства зоны
+      description: Возвращает все устройства, привязанные к зоне
+      tags:
+        - zones
+      responses:
+        '200':
+          description: Список устройств
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  zone_id:
+                    type: string
+                    format: uuid
+                  devices:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ZoneDevice'
+              examples:
+                with_devices:
+                  value:
+                    zone_id: "hz-001"
+                    devices:
+                      - device_id: "dev-001"
+                        device_name: "Термостат гостиной"
+                        role: "thermostat"
+                        priority: 1
+                      - device_id: "dev-002"
+                        device_name: "Клапан радиатора 1"
+                        role: "valve"
+                        priority: 2
+                      - device_id: "dev-003"
+                        device_name: "Клапан радиатора 2"
+                        role: "valve"
+                        priority: 2
+
+    post:
+      summary: Добавить устройство в зону
+      description: Привязывает устройство к зоне отопления
+      tags:
+        - zones
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                device_id:
+                  type: string
+                  format: uuid
+                role:
+                  type: string
+                  enum: [ thermostat, valve, boiler, pump ]
+                  description: Роль устройства в зоне
+                priority:
+                  type: integer
+                  default: 0
+                  description: Приоритет устройства
+              required:
+                - device_id
+                - role
+            examples:
+              add_thermostat:
+                summary: Добавить термостат
+                value:
+                  device_id: "dev-001"
+                  role: "thermostat"
+                  priority: 1
+              add_valve:
+                summary: Добавить клапан
+                value:
+                  device_id: "dev-002"
+                  role: "valve"
+                  priority: 2
+      responses:
+        '200':
+          description: Устройство добавлено
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          description: Устройство уже привязано к зоне
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /zones/{zoneId}/devices/{deviceId}:
+    parameters:
+      - $ref: '#/components/parameters/ZoneId'
+      - name: deviceId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    delete:
+      summary: Удалить устройство из зоны
+      tags:
+        - zones
+      responses:
+        '204':
+          description: Устройство удалено из зоны
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /optimization:
+    get:
+      summary: Получить рекомендации по энергосбережению
+      description: |
+        Анализирует текущее потребление энергии
+        и предоставляет рекомендации по оптимизации.
+      tags:
+        - optimization
+      parameters:
+        - name: house_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: zone_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Рекомендации получены
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  house_id:
+                    type: string
+                    format: uuid
+                  current_consumption:
+                    type: object
+                    properties:
+                      daily_kwh:
+                        type: number
+                        format: float
+                      monthly_kwh:
+                        type: number
+                        format: float
+                      estimated_cost:
+                        type: number
+                        format: float
+                  recommendations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        zone_id:
+                          type: string
+                          format: uuid
+                          nullable: true
+                        zone_name:
+                          type: string
+                          nullable: true
+                        type:
+                          type: string
+                          enum: [ temperature, schedule, mode ]
+                        description:
+                          type: string
+                        potential_savings:
+                          type: object
+                          properties:
+                            daily_kwh:
+                              type: number
+                              format: float
+                            monthly_currency:
+                              type: number
+                              format: float
+                        action_required:
+                          type: object
+                          additionalProperties: true
+              examples:
+                with_recommendations:
+                  value:
+                    house_id: "house-001"
+                    current_consumption:
+                      daily_kwh: 45.2
+                      monthly_kwh: 1356.0
+                      estimated_cost: 5424.00
+                    recommendations:
+                      - zone_id: "hz-001"
+                        zone_name: "Гостиная"
+                        type: "temperature"
+                        description: "Снизьте температуру на 1°C для экономии 7% энергии"
+                        potential_savings:
+                          daily_kwh: 3.2
+                          monthly_currency: 380.00
+                        action_required:
+                          target_temperature: 21.0
+                      - zone_id: "hz-002"
+                        zone_name: "Спальня"
+                        type: "schedule"
+                        description: "Включайте экономичный режим днём, когда вас нет дома"
+                        potential_savings:
+                          daily_kwh: 5.1
+                          monthly_currency: 610.00
+                        action_required:
+                          schedule_updates:
+                            - time: "09:00"
+                              mode: "eco"
+                            - time: "18:00"
+                              mode: "comfort"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ZoneId:
+      name: zoneId
+      in: path
+      required: true
+      description: ID зоны отопления
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    HeatingZone:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        house_id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        target_temperature:
+          type: number
+          format: float
+          description: Целевая температура (°C)
+        current_temperature:
+          type: number
+          format: float
+          nullable: true
+          description: Текущая температура (°C)
+        mode:
+          type: string
+          enum: [ comfort, eco, away, off ]
+        schedule_enabled:
+          type: boolean
+        mode_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Когда истекает временный режим
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    HeatingZoneCreate:
+      type: object
+      properties:
+        house_id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        target_temperature:
+          type: number
+          format: float
+          default: 20.0
+        mode:
+          type: string
+          enum: [ comfort, eco, away, off ]
+          default: "eco"
+        schedule_enabled:
+          type: boolean
+          default: false
+
+    HeatingZoneUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        target_temperature:
+          type: number
+          format: float
+        mode:
+          type: string
+          enum: [ comfort, eco, away, off ]
+        schedule_enabled:
+          type: boolean
+
+    HeatingSchedule:
+      type: object
+      properties:
+        time:
+          type: string
+          pattern: "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
+        mode:
+          type: string
+          enum: [ comfort, eco, away, off ]
+        target_temperature:
+          type: number
+          format: float
+
+    ZoneDevice:
+      type: object
+      properties:
+        device_id:
+          type: string
+          format: uuid
+        device_name:
+          type: string
+        role:
+          type: string
+          enum: [ thermostat, valve, boiler, pump ]
+        priority:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Неверный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

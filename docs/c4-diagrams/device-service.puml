@@ -1,0 +1,71 @@
+@startuml C4_Components_Device_Service
+!include lib/C4_Component.puml
+
+title Device Management Service - Уровень компонентов (C4 Components)
+
+Container_Boundary(device_service, "Device Management Service") {
+
+    Component(api_gateway, "API Gateway", "REST API", "Обработка входящих HTTP запросов")
+    Component(auth_service, "Auth Service", "JWT", "Аутентификация и авторизация с кэшированием токенов")
+    Component(jwt_cache, "JWT Cache", "In-Memory Cache", "Кэш JWT токенов для снижения нагрузки")
+    Component(device_controller, "Device Controller", "Go", "Контроллер управления устройствами")
+
+    Component(device_service_core, "Device Service", "Business Logic", "Основная бизнес-логика управления устройствами")
+    Component(command_handler, "Command Handler", "Command Pattern", "Обработка команд управления")
+    Component(state_manager, "State Manager", "State Pattern", "Управление состоянием устройств")
+    Component(discovery_service, "Discovery Service", "Service Discovery", "Обнаружение новых устройств")
+    Component(validation_service, "Validation Command Service", "Validation", "Валидация команд и данных")
+
+    Component(message_publisher, "Message Publisher", "Publisher/Subscriber", "Публикация событий в брокер")
+
+    Component(protocol_adapter_mqtt, "MQTT Adapter", "MQTT", "Адаптер для MQTT устройств")
+    Component(protocol_adapter_zigbee, "Zigbee Adapter", "Zigbee", "Адаптер для Zigbee устройств")
+    Component(protocol_adapter_zwave, "Z-Wave Adapter", "Z-Wave", "Адаптер для Z-Wave устройств")
+    Component(protocol_adapter_factory, "Protocol Adapter Factory", "Factory Pattern", "Фабрика адаптеров протоколов")
+
+    Component(repository, "Device Repository", "Repository Pattern", "Доступ к данным")
+}
+
+ContainerDb(device_db, "Device DB", "PostgreSQL", "База данных устройств")
+ContainerDb(message_broker, "Message Broker", "RabbitMQ/Kafka", "Брокер сообщений")
+
+System_Ext(mqtt_device, "MQTT Устройство", "Датчик или актуатор по протоколу MQTT")
+System_Ext(zigbee_device, "Zigbee Устройство", "Датчик или актуатор по протоколу Zigbee")
+System_Ext(zwave_device, "Z-Wave Устройство", "Датчик или актуатор по протоколу Z-Wave")
+
+' Взаимодействия между компонентами
+Rel(api_gateway, auth_service, "Вызывает", "Проверка JWT токена")
+Rel(auth_service, jwt_cache, "Читает/Записывает", "Кэш JWT токенов\n(пропуск валидации для кэшированных токенов)")
+Rel(auth_service, device_controller, "Передаёт управление", "Аутентифицированный запрос")
+
+Rel(device_controller, device_service_core, "Вызывает", "Обработка бизнес-логики")
+Rel(device_service_core, validation_service, "Вызывает", "Валидация входящих данных")
+Rel(device_service_core, command_handler, "Вызывает", "Обработка команды")
+Rel(device_service_core, state_manager, "Вызывает", "Обновление состояния")
+Rel(device_service_core, discovery_service, "Вызывает", "Обнаружение устройств")
+
+Rel(command_handler, protocol_adapter_factory, "Вызывает", "Получение адаптера протокола")
+
+Rel(state_manager, repository, "Вызывает", "Сохранение состояния в БД\nи кэширование в памяти")
+Rel(state_manager, message_publisher, "Вызывает", "Публикация события")
+
+Rel(protocol_adapter_factory, protocol_adapter_mqtt, "Создаёт", "Для MQTT устройств")
+Rel(protocol_adapter_factory, protocol_adapter_zigbee, "Создаёт", "Для Zigbee устройств")
+Rel(protocol_adapter_factory, protocol_adapter_zwave, "Создаёт", "Для Z-Wave устройств")
+
+Rel(protocol_adapter_mqtt, mqtt_device, "MQTT", "Управление устройством")
+Rel(protocol_adapter_zigbee, zigbee_device, "Zigbee", "Управление устройством")
+Rel(protocol_adapter_zwave, zwave_device, "Z-Wave", "Управление устройством")
+
+Rel(repository, device_db, "JDBC/SQL", "Чтение/запись")
+Rel(message_publisher, message_broker, "AMQP", "Публикация")
+
+' Описания
+Rel_Back(device_controller, device_service_core, "REST API: /api/v1/devices/*")
+Rel_Back(device_service_core, command_handler, "Выполнение команд: включить/выключить, настроить")
+Rel_Back(device_service_core, state_manager, "Текущее состояние: онлайн/оффлайн, значения сенсоров")
+Rel_Back(device_service_core, discovery_service, "Автоматическое обнаружение новых устройств в сети")
+Rel_Back(state_manager, message_publisher, "События: DeviceStateChanged, DeviceConnected, DeviceDisconnected")
+Rel_Back(auth_service, jwt_cache, "Кэширование валидированных JWT токенов\nдля снижения нагрузки на проверку подписи")
+
+@enduml

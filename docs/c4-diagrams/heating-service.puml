@@ -1,0 +1,83 @@
+@startuml C4_Components_Heating_Service
+!include lib/C4_Component.puml
+
+title Heating Service - Уровень компонентов (C4 Components)
+
+Container_Boundary(heating_service, "Heating Service") {
+
+    Component(api, "Heating API", "REST API", "API для управления отоплением")
+    Component(auth_service, "Auth Service", "JWT", "Аутентификация и авторизация с кэшированием токенов")
+    Component(jwt_cache, "JWT Cache", "In-Memory Cache", "Кэш JWT токенов для снижения нагрузки")
+
+    Component(heating_controller, "Heating Controller", "Go", "Контроллер управления отоплением")
+    Component(temperature_monitor, "Temperature Monitor", "Monitoring", "Мониторинг температуры")
+   Component(thermostat, "Thermostat", "PID Controller", "Поддержание целевой температуры")
+    Component(scheduler, "Scheduler", "Cron", "Планирование режимов отопления")
+   Component(zone_manager, "Zone Manager", "Zone Pattern", "Управление зонами отопления")
+   Component(energy_optimizer, "Energy Optimizer", "Optimization", "Оптимизация энергопотребления")
+
+    Component(command_processor, "Command Processor", "Command Pattern", "Обработка команд")
+    Component(event_subscriber, "Event Subscriber", "Subscriber", "Подписка на события")
+    Component(message_publisher, "Message Publisher", "Publisher", "Публикация событий")
+
+    Component(repository, "Heating Repository", "Repository Pattern", "Доступ к данным с кэшированием")
+
+    Component(boiler_adapter, "Boiler Adapter", "Protocol Adapter", "Управление котлом")
+    Component(valve_adapter, "Valve Adapter", "Protocol Adapter", "Управление регуляторами")
+    Component(pump_adapter, "Pump Adapter", "Protocol Adapter", "Управление насосами")
+}
+
+ContainerDb(heating_db, "Heating DB", "PostgreSQL", "База данных отопления")
+ContainerDb(message_broker, "Message Broker", "RabbitMQ/Kafka", "Брокер сообщений")
+
+System_Ext(boiler, "Котёл", "Отопительный котёл")
+System_Ext(valve, "Регулятор / клапан", "Регулятор радиатора")
+System_Ext(pump, "Циркуляционный насос", "Насос системы отопления")
+System_Ext(thermostat_device, "Термостат", "Термостат")
+
+' Взаимодействия между компонентами
+Rel(api, auth_service, "Вызывает", "Проверка JWT токена")
+Rel(auth_service, jwt_cache, "Читает/Записывает", "Кэш JWT токенов\n(пропуск валидации для кэшированных токенов)")
+Rel(auth_service, heating_controller, "Передаёт управление", "Аутентифицированный запрос")
+
+Rel(heating_controller, temperature_monitor, "Читает", "Текущая температура")
+Rel(heating_controller, thermostat, "Настраивает", "Целевая температура")
+Rel(heating_controller, scheduler, "Управляет", "Расписание отопления")
+Rel(heating_controller, zone_manager, "Управляет", "Зонами отопления")
+Rel(heating_controller, energy_optimizer, "Запрашивает", "Рекомендации по экономии")
+
+Rel(temperature_monitor, repository, "Читает", "Исторические данные и температура из кэша")
+
+Rel(thermostat, command_processor, "Отправляет", "Команда регулировки")
+Rel(zone_manager, command_processor, "Отправляет", "Команды для зон")
+Rel(scheduler, command_processor, "Отправляет", "Запланированные команды")
+
+Rel(command_processor, boiler_adapter, "Вызывает", "Управление котлом")
+Rel(command_processor, valve_adapter, "Вызывает", "Управление регуляторами")
+Rel(command_processor, pump_adapter, "Вызывает", "Управление насосами")
+
+Rel(event_subscriber, message_broker, "Подписывается", "События устройств")
+Rel(event_subscriber, temperature_monitor, "Уведомляет", "Изменение температуры")
+Rel(event_subscriber, zone_manager, "Уведомляет", "События в зонах")
+
+Rel(command_processor, message_publisher, "Вызывает", "Публикация результата")
+Rel(message_publisher, message_broker, "Публикует", "События отопления")
+
+Rel(repository, heating_db, "JDBC/SQL", "Чтение/запись")
+
+Rel(boiler_adapter, boiler, "Проприетарный протокол", "Включить/выключить, температура")
+Rel(valve_adapter, valve, "Zigbee/WiFi", "Открыть/закрыть")
+Rel(pump_adapter, pump, "Zigbee/WiFi", "Включить/выключить, скорость")
+Rel(temperature_monitor, thermostat_device, "Zigbee/WiFi", "Чтение температуры")
+
+' Описания
+Rel_Back(heating_controller, thermostat, "Установка целевой температуры для зоны")
+Rel_Back(thermostat, command_processor, "PID-регулятор вычисляет необходимые действия")
+Rel_Back(zone_manager, command_processor, "Каждая зона управляется независимо")
+Rel_Back(scheduler, command_processor, "Комфортный режим, Экономичный режим, Away")
+Rel_Back(energy_optimizer, thermostat, "Предложения по оптимизации энергопотребления")
+Rel_Back(event_subscriber, message_broker, "Подписка на события: TemperatureChanged, DeviceStateChanged")
+Rel_Back(auth_service, jwt_cache, "Кэширование валидированных JWT токенов\nдля снижения нагрузки на проверку подписи")
+Rel_Back(temperature_monitor, repository, "Кэширование последних показаний температуры\nв памяти для быстрого доступа")
+
+@enduml

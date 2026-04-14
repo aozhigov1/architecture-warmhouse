@@ -1,0 +1,103 @@
+@startuml C4_Code_Command_Sequence
+
+title Обработка команды устройства (C4 Code - Sequence Diagram)
+
+actor "Пользователь" as User
+participant "Веб-приложение" as Web
+participant "API Gateway" as Gateway
+participant "Device Controller" as Controller
+participant "Auth Service" as Auth
+participant "Validation Command Service" as Validation
+participant "Command Handler" as CommandHandler
+participant "Protocol Adapter Factory" as Factory
+participant "MQTT Adapter" as Adapter
+participant "State Manager" as StateManager
+participant "Cache" as Cache
+participant "Message Publisher" as Publisher
+participant "Message Broker" as Broker
+participant "MQTT Device" as Device
+
+User -> Web: command (example: TURN_ON device)
+Web -> Gateway: HTTP POST /api/v1/devices/{id}/commands\n{command: "TURN_ON"\nHeaders: Authorization: Bearer <JWT>}
+Gateway -> Auth: validateToken(token)
+Auth --> Gateway: token valid, userId, roles
+
+Gateway -> Controller: handleCommand(deviceId, command)
+Controller -> Validation: validateCommand(command)
+Validation --> Controller: valid or invalid
+
+alt Команда валидна
+    Controller -> CommandHandler: processCommand(deviceId, command)
+    CommandHandler -> Factory: getAdapter(deviceId)
+    Factory --> CommandHandler: MQTTAdapter
+
+    CommandHandler -> Adapter: isConnected()
+
+    alt Устройство подключено
+        Adapter --> CommandHandler: true
+        CommandHandler -> Adapter: sendCommand(command)
+        Adapter -> Adapter: validateCommand(command)
+        Adapter -> Adapter: preparePayload(command)
+        Adapter -> Device: MQTT PUBLISH\ntopic: cmd/{deviceId}/TURN_ON\npayload: {...}
+        Device --> Adapter: MQTT ACK\ntopic: cmd/{deviceId}/ACK
+
+        Adapter -> Adapter: parseResponse()
+        Adapter --> CommandHandler: CommandResult(success=true)
+
+        CommandHandler -> StateManager: updateState(deviceId, newState)
+        StateManager -> Cache: SET device:{deviceId}:state\n{status: "ON", ...}
+        Cache --> StateManager: OK
+        StateManager -> Cache: EXPIRE device:{deviceId}:state\n3600
+
+        CommandHandler -> Publisher: publishEvent(DeviceStateChanged)
+        Publisher -> Broker: AMQP PUBLISH\ntopic: devices.state.changed\n{deviceId, newState, timestamp}
+        Broker --> Publisher: ACK
+
+        Publisher --> CommandHandler: published
+        CommandHandler --> Controller: CommandResult(success=true)
+    else Устройство не подключено
+        Adapter --> CommandHandler: false
+        CommandHandler -> Adapter: connect(deviceId)
+        Adapter -> Device: MQTT CONNECT\nclient_id: service-{deviceId}
+        Device --> Adapter: CONNACK
+
+        alt Подключение успешно
+            Adapter -> Adapter: subscribeToTopics()
+            Adapter --> CommandHandler: connected
+            CommandHandler -> Adapter: sendCommand(command)
+            ... (как выше) ...
+            CommandHandler --> Controller: CommandResult(success=true)
+        else Ошибка подключения
+            Adapter --> CommandHandler: connection failed
+            CommandHandler --> Controller: CommandResult(success=false, error="Connection failed")
+        end
+    end
+
+    Controller --> Gateway: HTTP 200 OK\n{success: true, ...}
+else Команда невалидна
+    Validation --> Controller: ValidationError
+    Controller --> Gateway: HTTP 400 Bad Request\n{error: "Validation failed"}
+end
+
+Gateway --> Web: HTTP Response
+Web --> User: Показать результат команды
+
+note over Device, Broker
+    Асинхронная обработка события другими сервисами:
+
+    1. Heating Service подписан на devices.state.changed
+       -> Если устройство термостат, обновить целевую температуру
+
+    2. Scenario Service подписан на devices.state.changed
+       -> Проверить условия сценариев
+       -> Если условие выполнено, выполнить действия
+
+    3. Telemetry Service подписан на devices.state.changed
+       -> Сохранить новое состояние в TimescaleDB
+end note
+
+Broker ->> "Heating Service": AMQP Message\ndevices.state.changed
+Broker ->> "Scenario Service": AMQP Message\ndevices.state.changed
+Broker ->> "Telemetry Service": AMQP Message\ndevices.state.changed
+
+@enduml

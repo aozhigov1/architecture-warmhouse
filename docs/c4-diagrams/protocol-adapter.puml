@@ -1,0 +1,161 @@
+@startuml C4_Code_Protocol_Adapter
+
+title Protocol Adapter - Подключение неизвестных устройств (C4 Code - UML Class Diagram)
+
+package "Device Management Service" {
+
+    interface DeviceAdapter {
+        +connect(deviceId: string): bool
+        +disconnect(deviceId: string): bool
+        +sendCommand(command: DeviceCommand): CommandResult
+        +getState(): DeviceState
+        +isConnected(): bool
+    }
+
+    abstract class AbstractDeviceAdapter {
+        -deviceId: string
+        -config: AdapterConfig
+        -state: DeviceState
+        -connectionStatus: ConnectionStatus
+        #logger: Logger
+        +AbstractDeviceAdapter(deviceId: string, config: AdapterConfig)
+        +connect(deviceId: string): bool {abstract}
+        +disconnect(deviceId: string): bool {abstract}
+        +sendCommand(command: DeviceCommand): CommandResult {abstract}
+        +validateCommand(command: DeviceCommand): bool
+        +updateState(state: DeviceState): void
+        +getState(): DeviceState
+        +isConnected(): bool
+    }
+
+    class MQTTAdapter {
+        -mqttClient: MQTTClient
+        -topicPrefix: string
+        -qos: int
+        +MQTTAdapter(deviceId: string, config: MQTTConfig)
+        +connect(deviceId: string): bool
+        +disconnect(deviceId: string): bool
+        +sendCommand(command: DeviceCommand): CommandResult
+        -publishCommand(topic: string, payload: byte[]): void
+        -subscribeToTopics(): void
+        -onMessageReceived(topic: string, payload: byte[]): void
+    }
+
+    class ZigbeeAdapter {
+        -coordinator: ZigbeeCoordinator
+        -endpoint: int
+        -clusterId: int
+        +ZigbeeAdapter(deviceId: string, config: ZigbeeConfig)
+        +connect(deviceId: string): bool
+        +disconnect(deviceId: string): bool
+        +sendCommand(command: DeviceCommand): CommandResult
+        -sendZCLCommand(cluster: int, command: int, payload: byte[]): void
+        -readAttribute(cluster: int, attribute: int): void
+    }
+
+    class ZWaveAdapter {
+        -controller: ZWaveController
+        -nodeId: int
+        -instance: int
+        +ZWaveAdapter(deviceId: string, config: ZWaveConfig)
+        +connect(deviceId: string): bool
+        +disconnect(deviceId: string): bool
+        +sendCommand(command: DeviceCommand): CommandResult
+        -sendCommandClass(commandClass: int, command: int, payload: byte[]): void
+    }
+
+    class HTTPAdapter {
+        -httpClient: HTTPClient
+        -baseUrl: string
+        -authToken: string
+        +HTTPAdapter(deviceId: string, config: HTTPConfig)
+        +connect(deviceId: string): bool
+        +disconnect(deviceId: string): bool
+        +sendCommand(command: DeviceCommand): CommandResult
+        -sendRequest(endpoint: string, payload: byte[]): HttpResponse
+    }
+
+    class ProtocolAdapterFactory {
+        -registry: Map<string, DeviceAdapter>
+        -config: FactoryConfig
+        +ProtocolAdapterFactory(config: FactoryConfig)
+        +createAdapter(deviceType: string, config: AdapterConfig): DeviceAdapter
+        +getAdapter(deviceId: string): DeviceAdapter
+        +registerAdapter(deviceId: string, adapter: DeviceAdapter): void
+        +removeAdapter(deviceId: string): void
+        -detectProtocol(deviceInfo: DeviceInfo): string
+    }
+
+    class DeviceCommand {
+        -deviceId: string
+        -commandType: CommandType
+        -parameters: Map<string, object>
+        -timestamp: DateTime
+        +DeviceCommand(deviceId: string, commandType: CommandType)
+        +getParameter(key: string): object
+        +setParameter(key: string, value: object): void
+    }
+
+    class CommandResult {
+        -success: bool
+        -errorCode: int
+        -message: string
+        -data: Map<string, object>
+        -timestamp: DateTime
+        +CommandResult(success: bool, message: string)
+        +isSuccess(): bool
+        +getData(key: string): object
+    }
+
+    class DeviceState {
+        -deviceId: string
+        -status: DeviceStatus
+        -attributes: Map<string, object>
+        -lastUpdated: DateTime
+        +DeviceState(deviceId: string)
+        +setAttribute(key: string, value: object): void
+        +getAttribute(key: string): object
+        +getStatus(): DeviceStatus
+    }
+
+    enum ConnectionStatus {
+        DISCONNECTED
+        CONNECTING
+        CONNECTED
+        ERROR
+    }
+
+    enum DeviceStatus {
+        ONLINE
+        OFFLINE
+        ERROR
+        MAINTENANCE
+    }
+
+    enum CommandType {
+        TURN_ON
+        TURN_OFF
+        SET_VALUE
+        GET_STATE
+        SET_PARAMETER
+    }
+}
+
+DeviceAdapter <|.. AbstractDeviceAdapter
+AbstractDeviceAdapter <|-- MQTTAdapter
+AbstractDeviceAdapter <|-- ZigbeeAdapter
+AbstractDeviceAdapter <|-- ZWaveAdapter
+AbstractDeviceAdapter <|-- HTTPAdapter
+
+ProtocolAdapterFactory ..> DeviceAdapter : creates
+ProtocolAdapterFactory ..> AbstractDeviceAdapter : uses
+
+AbstractDeviceAdapter ..> DeviceCommand : processes
+AbstractDeviceAdapter ..> CommandResult : returns
+AbstractDeviceAdapter ..> DeviceState : manages
+AbstractDeviceAdapter ..> ConnectionStatus : uses
+
+DeviceCommand ..> CommandType : uses
+DeviceState ..> DeviceStatus : uses
+
+@enduml

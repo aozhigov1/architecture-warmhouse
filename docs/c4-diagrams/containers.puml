@@ -1,0 +1,107 @@
+@startuml C4_Containers
+!include lib/C4_Container.puml
+
+title Целевая архитектура Warmhouse - Уровень контейнеров (C4 Containers)
+
+Person(user, "Пользователь", "Владелец умного дома")
+
+System_Boundary(warmhouse, "Экосистема Warmhouse") {
+
+    System_Boundary(frontend, "Клиентские приложения") {
+        Container(web, "Веб-приложение", "React/Next.js", "Веб-интерфейс управления")
+        Container(mobile, "Мобильное приложение", "React Native", "Мобильное приложение для iOS/Android")
+    }
+
+    Container(gateway, "API Gateway", "Kong/Nginx", "Единая точка входа для всех API")
+
+    System_Boundary(services, "Микросервисы") {
+        Container(device_service, "Device Management Service", "Go", "Управление устройствами и их подключением")
+        Container(heating_service, "Heating Service", "Go", "Управление отоплением")
+        Container(lighting_service, "Lighting Service", "Go", "Управление освещением")
+        Container(gate_service, "Gate Service", "Go", "Управление автоматическими воротами")
+        Container(surveillance_service, "Surveillance Service", "Go", "Видеонаблюдение")
+        Container(scenario_service, "Scenario Service", "Go", "Управление сценариями автоматизации")
+        Container(telemetry_service, "Telemetry Service", "Go", "Сбор и хранение телеметрии")
+    }
+
+    ContainerDb(message_broker, "Message Broker", "RabbitMQ/Kafka", "Асинхронная передача сообщений")
+
+    System_Boundary(databases, "Базы данных") {
+        ContainerDb(device_db, "Device DB", "PostgreSQL", "Реестр устройств")
+        ContainerDb(heating_db, "Heating DB", "PostgreSQL", "Данные об отоплении")
+        ContainerDb(lighting_db, "Lighting DB", "PostgreSQL", "Данные об освещении")
+        ContainerDb(surveillance_db, "Surveillance DB", "PostgreSQL", "Записи видеокамер")
+        ContainerDb(scenario_db, "Scenario DB", "PostgreSQL", "Сценарии автоматизации")
+        ContainerDb(telemetry_db, "Telemetry DB", "TimescaleDB", "Временные ряды телеметрии")
+    }
+}
+
+System_Ext(partner_devices, "Устройства партнёров", "Датчики и актуаторы по стандартным протоколам\n(MQTT, Zigbee, Z-Wave)")
+System_Ext(notification_service, "Notification Service", "Отправка уведомлений пользователям")
+
+Rel(user, web, "HTTPS", "Использует")
+Rel(user, mobile, "HTTPS", "Использует")
+
+Rel(web, gateway, "HTTPS/REST, WebSocket", "API вызовы")
+Rel(mobile, gateway, "HTTPS/REST, WebSocket", "API вызовы")
+
+Rel(gateway, device_service, "REST/gRPC", "Маршрутизация")
+Rel(gateway, heating_service, "REST/gRPC", "Маршрутизация")
+Rel(gateway, lighting_service, "REST/gRPC", "Маршрутизация")
+Rel(gateway, gate_service, "REST/gRPC", "Маршрутизация")
+Rel(gateway, surveillance_service, "REST/gRPC", "Маршрутизация")
+Rel(gateway, scenario_service, "REST/gRPC", "Маршрутизация")
+Rel(gateway, telemetry_service, "REST/gRPC", "Маршрутизация")
+
+Rel(device_service, message_broker, "AMQP", "Публикация команд")
+Rel(heating_service, message_broker, "AMQP", "Подписка на события")
+Rel(lighting_service, message_broker, "AMQP", "Подписка на события")
+Rel(gate_service, message_broker, "AMQP", "Подписка на события")
+Rel(surveillance_service, message_broker, "AMQP", "Подписка на события")
+Rel(scenario_service, message_broker, "AMQP", "Подписка и публикация")
+Rel(telemetry_service, message_broker, "AMQP", "Подписка на события")
+
+Rel(device_service, device_db, "JDBC/SQL", "Чтение/запись")
+Rel(heating_service, heating_db, "JDBC/SQL", "Чтение/запись")
+Rel(lighting_service, lighting_db, "JDBC/SQL", "Чтение/запись")
+Rel(surveillance_service, surveillance_db, "JDBC/SQL", "Чтение/запись")
+Rel(scenario_service, scenario_db, "JDBC/SQL", "Чтение/запись")
+Rel(telemetry_service, telemetry_db, "JDBC/SQL", "Запись временных рядов")
+
+Rel(device_service, partner_devices, "MQTT/Zigbee/Z-Wave", "Интеграция с устройствами")
+Rel(heating_service, partner_devices, "Проприетарный протокол", "Управление котлом/радиаторами")
+Rel(lighting_service, partner_devices, "Zigbee/WiFi", "Управление светом")
+Rel(gate_service, partner_devices, "RF/WiFi", "Управление воротами")
+Rel(surveillance_service, partner_devices, "RTSP/ONVIF", "Потоковое видео")
+Rel(telemetry_service, partner_devices, "MQTT", "Сбор телеметрии")
+
+Rel(scenario_service, notification_service, "HTTP", "Отправка уведомлений")
+
+' Описания связей
+Rel_Back(user, web, "Доступ из браузера")
+Rel_Back(user, mobile, "Доступ с мобильного устройства")
+Rel_Back(web, gateway, "Аутентификация и авторизация через JWT\nс кэшированием токенов для снижения нагрузки")
+Rel_Back(mobile, gateway, "Аутентификация и авторизация через JWT\nс кэшированием токенов для снижения нагрузки")
+Rel_Back(device_service, message_broker, "Публикация событий изменения состояния устройств")
+Rel_Back(device_service, partner_devices, "Подключение устройств по стандартным протоколам")
+
+' Примечания о кэшировании
+note right of device_service
+  **Кэширование:**
+  - Состояние устройств (в памяти)
+  - JWT токены авторизации
+end note
+
+note right of heating_service
+  **Кэширование:**
+  - Температура датчиков
+  - JWT токены авторизации
+end note
+
+note right of lighting_service
+  **Кэширование:**
+  - Состояние света
+  - JWT токены авторизации
+end note
+
+@enduml
