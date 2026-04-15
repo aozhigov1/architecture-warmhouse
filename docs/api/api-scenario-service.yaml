@@ -1,0 +1,856 @@
+openapi: 3.0.3
+info:
+  title: Scenario Service API
+  description: |
+    API для управления сценариями автоматизации в экосистеме Warmhouse.
+
+    **Основные возможности:**
+    - CRUD операций для сценариев
+    - Управление условиями
+    - Настройка действий сценариев
+    - Ручной запуск сценариев
+    - Включение/выключение сценариев
+    - Просмотр истории выполнения
+
+    **Аутентификация:** JWT Bearer Token
+
+    **Базовый URL:** `https://api.warmhouse.com/scenario/v1`
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8082/scenario/v1
+    description: Local
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: scenarios
+    description: Сценарии автоматизации
+  - name: conditions
+    description: Условия сценариев
+  - name: actions
+    description: Действия сценариев
+  - name: execution
+    description: Выполнение сценариев
+
+paths:
+  /scenarios:
+    get:
+      summary: Получить список сценариев
+      description: Возвращает все сценарии для дома пользователя
+      tags:
+        - scenarios
+      parameters:
+        - name: house_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: is_enabled
+          in: query
+          schema:
+            type: boolean
+        - name: trigger_type
+          in: query
+          schema:
+            type: string
+            enum: [event, schedule, manual]
+      responses:
+        '200':
+          description: Список сценариев
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Scenario'
+              examples:
+                success:
+                  value:
+                    data:
+                      - id: "scen-001"
+                        house_id: "house-001"
+                        name: "Утренний режим"
+                        description: "Включает свет и устанавливает комфортную температуру утром"
+                        icon: "sunrise"
+                        is_enabled: true
+                        trigger_type: "schedule"
+                        execution_count: 45
+                        last_executed_at: "2026-04-05T06:00:00Z"
+                        created_at: "2026-01-15T10:00:00Z"
+                        updated_at: "2026-03-20T14:30:00Z"
+                      - id: "scen-002"
+                        house_id: "house-001"
+                        name: "Движение в коридоре"
+                        description: "Включает свет при обнаружении движения"
+                        icon: "motion"
+                        is_enabled: true
+                        trigger_type: "event"
+                        execution_count: 234
+                        last_executed_at: "2026-04-05T08:15:22Z"
+                        created_at: "2026-02-01T10:00:00Z"
+                        updated_at: "2026-03-15T09:20:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      summary: Создать сценарий
+      description: Создаёт новый сценарий автоматизации
+      tags:
+        - scenarios
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScenarioCreate'
+            examples:
+              morning_mode:
+                summary: Утренний режим
+                value:
+                  house_id: "house-001"
+                  name: "Утренний режим"
+                  description: "Включает свет и устанавливает температуру по утрам"
+                  icon: "sunrise"
+                  is_enabled: true
+                  trigger_type: "schedule"
+                  conditions:
+                    - type: "time"
+                      operator: ">="
+                      value: "06:00"
+                      order_index: 1
+                    - type: "weekday"
+                      operator: "in"
+                      value: "1,2,3,4,5"
+                      order_index: 2
+                  actions:
+                    - order_index: 1
+                      type: "device_command"
+                      device_id: "dev-001"
+                      command: "turn_on"
+                      parameters:
+                        brightness: 70
+                    - order_index: 2
+                      type: "device_command"
+                      device_id: "dev-002"
+                      command: "set_target_temperature"
+                      parameters:
+                        temperature: 22.0
+              motion_triggered:
+                summary: Триггер движения
+                value:
+                  house_id: "house-001"
+                  name: "Свет при движении"
+                  icon: "motion"
+                  is_enabled: true
+                  trigger_type: "event"
+                  conditions:
+                    - type: "device_state"
+                      device_id: "dev-003"
+                      operator: "="
+                      value: "motion_detected"
+                      order_index: 1
+                  actions:
+                    - order_index: 1
+                      type: "device_command"
+                      device_id: "dev-001"
+                      command: "turn_on"
+                      parameters:
+                        brightness: 100
+                    - order_index: 2
+                      type: "delay"
+                      delay_ms: 30000
+                    - order_index: 3
+                      type: "device_command"
+                      device_id: "dev-001"
+                      command: "turn_off"
+      responses:
+        '200':
+          description: Сценарий создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Scenario'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /scenarios/{scenarioId}:
+    parameters:
+      - $ref: '#/components/parameters/ScenarioId'
+
+    get:
+      summary: Получить сценарий
+      description: |
+        Возвращает детальную информацию о сценарии
+        включая все условия и действия
+      tags:
+        - scenarios
+      responses:
+        '200':
+          description: Сценарий получен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: Обновить сценарий
+      tags:
+        - scenarios
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScenarioUpdate'
+            examples:
+              rename:
+                summary: Переименовать
+                value:
+                  name: "Утренний режим (обновлено)"
+              disable:
+                summary: Отключить
+                value:
+                  is_enabled: false
+      responses:
+        '200':
+          description: Сценарий обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Scenario'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Удалить сценарий
+      tags:
+        - scenarios
+      responses:
+        '204':
+          description: Сценарий удалён
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /scenarios/{scenarioId}/enable:
+    parameters:
+      - $ref: '#/components/parameters/ScenarioId'
+
+    post:
+      summary: Включить сценарий
+      tags:
+        - scenarios
+      responses:
+        '200':
+          description: Сценарий включён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Scenario'
+              examples:
+                enabled:
+                  value:
+                    id: "scen-001"
+                    is_enabled: true
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /scenarios/{scenarioId}/disable:
+    parameters:
+      - $ref: '#/components/parameters/ScenarioId'
+
+    post:
+      summary: Отключить сценарий
+      tags:
+        - scenarios
+      responses:
+        '200':
+          description: Сценарий отключён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Scenario'
+              examples:
+                disabled:
+                  value:
+                    id: "scen-001"
+                    is_enabled: false
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /scenarios/{scenarioId}/execute:
+    parameters:
+      - $ref: '#/components/parameters/ScenarioId'
+
+    post:
+      summary: Выполнить сценарий вручную
+      description: |
+        Запускает выполнение сценария в ручном режиме.
+        Условия сценария игнорируются, выполняются только действия.
+      tags:
+        - execution
+      responses:
+        '200':
+          description: Сценарий запущен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  execution_id:
+                    type: string
+                    format: uuid
+                  scenario_id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [started, in_progress]
+                  started_at:
+                    type: string
+                    format: date-time
+              examples:
+                started:
+                  value:
+                    execution_id: "exec-001"
+                    scenario_id: "scen-001"
+                    status: "started"
+                    started_at: "2026-04-05T14:30:00Z"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          description: Сценарий отключён или уже выполняется
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /scenarios/{scenarioId}/conditions:
+    parameters:
+      - $ref: '#/components/parameters/ScenarioId'
+
+    get:
+      summary: Получить условия сценария
+      tags:
+        - conditions
+      responses:
+        '200':
+          description: Условия получены
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scenario_id:
+                    type: string
+                    format: uuid
+                  conditions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScenarioCondition'
+
+    post:
+      summary: Добавить условие
+      tags:
+        - conditions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScenarioConditionCreate'
+            examples:
+              time_condition:
+                summary: Условие по времени
+                value:
+                  type: "time"
+                  operator: ">="
+                  value: "18:00"
+                  order_index: 1
+              device_state_condition:
+                summary: Условие по состоянию устройства
+                value:
+                  type: "device_state"
+                  device_id: "dev-001"
+                  operator: "="
+                  value: "on"
+                  order_index: 1
+      responses:
+        '200':
+          description: Условие добавлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioCondition'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /scenarios/{scenarioId}/conditions/{conditionId}:
+    parameters:
+      - $ref: '#/components/parameters/ScenarioId'
+      - name: conditionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    delete:
+      summary: Удалить условие
+      tags:
+        - conditions
+      responses:
+        '204':
+          description: Условие удалено
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /scenarios/{scenarioId}/actions:
+    parameters:
+      - $ref: '#/components/parameters/ScenarioId'
+
+    get:
+      summary: Получить действия сценария
+      tags:
+        - actions
+      responses:
+        '200':
+          description: Действия получены
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scenario_id:
+                    type: string
+                    format: uuid
+                  actions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScenarioAction'
+
+    post:
+      summary: Добавить действие
+      tags:
+        - actions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScenarioActionCreate'
+            examples:
+              turn_on_light:
+                summary: Включить свет
+                value:
+                  order_index: 1
+                  type: "device_command"
+                  device_id: "dev-001"
+                  command: "turn_on"
+                  parameters:
+                    brightness: 80
+              send_notification:
+                summary: Отправить уведомление
+                value:
+                  order_index: 2
+                  type: "notification"
+                  message: "Температура в спальне ниже нормы"
+      responses:
+        '200':
+          description: Действие добавлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioAction'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /scenarios/{scenarioId}/actions/{actionId}:
+    parameters:
+      - $ref: '#/components/parameters/ScenarioId'
+      - name: actionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    put:
+      summary: Обновить действие
+      tags:
+        - actions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScenarioActionUpdate'
+      responses:
+        '200':
+          description: Действие обновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioAction'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Удалить действие
+      tags:
+        - actions
+      responses:
+        '204':
+          description: Действие удалено
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /scenarios/{scenarioId}/history:
+    parameters:
+      - $ref: '#/components/parameters/ScenarioId'
+
+    get:
+      summary: Получить историю выполнения
+      description: |
+        Возвращает историю выполнения сценария
+        с результатами и ошибками
+      tags:
+        - execution
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: История выполнения
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scenario_id:
+                    type: string
+                    format: uuid
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        execution_id:
+                          type: string
+                          format: uuid
+                        triggered_at:
+                          type: string
+                          format: date-time
+                        completed_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        status:
+                          type: string
+                          enum: [success, failed, partial]
+                        error_message:
+                          type: string
+                          nullable: true
+                        actions_executed:
+                          type: integer
+                        actions_failed:
+                          type: integer
+              examples:
+                with_history:
+                  value:
+                    scenario_id: "scen-001"
+                    data:
+                      - execution_id: "exec-001"
+                        triggered_at: "2026-04-05T06:00:00Z"
+                        completed_at: "2026-04-05T06:00:05Z"
+                        status: "success"
+                        error_message: null
+                        actions_executed: 3
+                        actions_failed: 0
+                      - execution_id: "exec-002"
+                        triggered_at: "2026-04-04T06:00:00Z"
+                        completed_at: "2026-04-04T06:00:03Z"
+                        status: "partial"
+                        error_message: "Устройство dev-002 недоступно"
+                        actions_executed: 2
+                        actions_failed: 1
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ScenarioId:
+      name: scenarioId
+      in: path
+      required: true
+      description: ID сценария
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    Scenario:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        house_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        icon:
+          type: string
+          nullable: true
+        is_enabled:
+          type: boolean
+        trigger_type:
+          type: string
+          enum: [event, schedule, manual]
+        execution_count:
+          type: integer
+        last_executed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ScenarioDetail:
+      allOf:
+        - $ref: '#/components/schemas/Scenario'
+        - type: object
+          properties:
+            conditions:
+              type: array
+              items:
+                $ref: '#/components/schemas/ScenarioCondition'
+            actions:
+              type: array
+              items:
+                $ref: '#/components/schemas/ScenarioAction'
+
+    ScenarioCreate:
+      type: object
+      properties:
+        house_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        icon:
+          type: string
+        is_enabled:
+          type: boolean
+          default: true
+        trigger_type:
+          type: string
+          enum: [event, schedule, manual]
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioConditionCreate'
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioActionCreate'
+      required:
+        - house_id
+        - name
+        - trigger_type
+        - actions
+
+    ScenarioUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        icon:
+          type: string
+        is_enabled:
+          type: boolean
+
+    ScenarioCondition:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        scenario_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [device_state, time, weekday, temperature]
+        device_id:
+          type: string
+          format: uuid
+          nullable: true
+        operator:
+          type: string
+          enum: ["=", "!=", ">", "<", ">=", "<=", "in", "not_in"]
+        value:
+          type: string
+        order_index:
+          type: integer
+
+    ScenarioConditionCreate:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [device_state, time, weekday, temperature]
+        device_id:
+          type: string
+          format: uuid
+        operator:
+          type: string
+          enum: ["=", "!=", ">", "<", ">=", "<=", "in", "not_in"]
+        value:
+          type: string
+        order_index:
+          type: integer
+          default: 0
+      required:
+        - type
+        - operator
+        - value
+
+    ScenarioAction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        scenario_id:
+          type: string
+          format: uuid
+        order_index:
+          type: integer
+        type:
+          type: string
+          enum: [device_command, delay, notification, set_variable]
+        device_id:
+          type: string
+          format: uuid
+          nullable: true
+        command:
+          type: string
+          nullable: true
+        parameters:
+          type: object
+          additionalProperties: true
+          nullable: true
+        delay_ms:
+          type: integer
+          nullable: true
+        message:
+          type: string
+          nullable: true
+
+    ScenarioActionCreate:
+      type: object
+      properties:
+        order_index:
+          type: integer
+          default: 0
+        type:
+          type: string
+          enum: [device_command, delay, notification, set_variable]
+        device_id:
+          type: string
+          format: uuid
+        command:
+          type: string
+        parameters:
+          type: object
+          additionalProperties: true
+        delay_ms:
+          type: integer
+        message:
+          type: string
+      required:
+        - type
+
+    ScenarioActionUpdate:
+      type: object
+      properties:
+        order_index:
+          type: integer
+        command:
+          type: string
+        parameters:
+          type: object
+          additionalProperties: true
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Неверный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

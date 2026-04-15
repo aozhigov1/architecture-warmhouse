@@ -1,0 +1,879 @@
+openapi: 3.0.3
+info:
+  title: Device Management Service API
+  description: |
+    API для управления устройствами в экосистеме Warmhouse.
+
+    **Основные возможности:**
+    - CRUD операции для устройств
+    - Отправка команд устройствам
+    - Обнаружение новых устройств в сети
+    - Управление подключением и состоянием
+
+    **Аутентификация:** JWT Bearer Token
+
+    **Базовый URL:** `https://api.warmhouse.com/device/v1`
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080/device/v1
+    description: Local
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: devices
+    description: Операции с устройствами
+  - name: commands
+    description: Отправка команд устройствам
+  - name: discovery
+    description: Обнаружение устройств
+  - name: types
+    description: Типы устройств
+
+paths:
+  /devices:
+    get:
+      summary: Получить список устройств
+      description: |
+        Возвращает список всех устройств, доступных пользователю.
+        Поддерживает пагинацию и фильтрацию.
+      tags:
+        - devices
+      parameters:
+        - name: house_id
+          in: query
+          description: Фильтр по ID дома
+          schema:
+            type: string
+            format: uuid
+        - name: room_id
+          in: query
+          description: Фильтр по ID комнаты
+          schema:
+            type: string
+            format: uuid
+        - name: type_id
+          in: query
+          description: Фильтр по типу устройства
+          schema:
+            type: string
+            format: uuid
+        - name: connection_status
+          in: query
+          description: Фильтр по статусу подключения
+          schema:
+            type: string
+            enum: [online, offline, error]
+        - name: page
+          in: query
+          description: Номер страницы
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: limit
+          in: query
+          description: Количество элементов на странице
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Список устройств получен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Device'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+              examples:
+                success:
+                  summary: Успешный ответ
+                  value:
+                    data:
+                      - id: "550e8400-e29b-41d4-a716-446655440000"
+                        house_id: "550e8400-e29b-41d4-a716-446655440001"
+                        room_id: "550e8400-e29b-41d4-a716-446655440002"
+                        device_type_id: "550e8400-e29b-41d4-a716-446655440003"
+                        name: "Датчик температуры гостиной"
+                        external_id: "zigbee-0x1234"
+                        connection_status: "online"
+                        battery_level: 85
+                        firmware_version: "2.1.0"
+                        last_seen: "2026-04-05T12:30:45Z"
+                        created_at: "2026-01-15T10:00:00Z"
+                        updated_at: "2026-04-05T12:30:00Z"
+                    pagination:
+                      page: 1
+                      limit: 20
+                      total: 45
+                      total_pages: 3
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      summary: Добавить новое устройство
+      description: |
+        Регистрирует новое устройство в системе.
+        После добавления устройство будет обнаружено и подключено.
+      tags:
+        - devices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceCreate'
+            examples:
+              mqtt_device:
+                summary: MQTT устройство
+                value:
+                  house_id: "550e8400-e29b-41d4-a716-446655440001"
+                  device_type_id: "550e8400-e29b-41d4-a716-446655440003"
+                  name: "Умная лампа гостиной"
+                  external_id: "mqtt/living-room/lamp-1"
+                  config:
+                    ip_address: "192.168.1.100"
+                    port: 1883
+                    topic_prefix: "smart-home/living-room"
+              zigbee_device:
+                summary: Zigbee устройство
+                value:
+                  house_id: "550e8400-e29b-41d4-a716-446655440001"
+                  device_type_id: "550e8400-e29b-41d4-a716-446655440004"
+                  name: "Датчик открытия двери"
+                  external_id: "zigbee-0x5678"
+                  room_id: "550e8400-e29b-41d4-a716-446655440002"
+      responses:
+        '200':
+          description: Устройство успешно добавлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+              examples:
+                created:
+                  summary: Устройство создано
+                  value:
+                    id: "550e8400-e29b-41d4-a716-446655440005"
+                    house_id: "550e8400-e29b-41d4-a716-446655440001"
+                    room_id: "550e8400-e29b-41d4-a716-446655440002"
+                    device_type_id: "550e8400-e29b-41d4-a716-446655440003"
+                    name: "Умная лампа гостиной"
+                    external_id: "mqtt/living-room/lamp-1"
+                    connection_status: "offline"
+                    battery_level: null
+                    firmware_version: null
+                    last_seen: null
+                    config:
+                      ip_address: "192.168.1.100"
+                      port: 1883
+                      topic_prefix: "smart-home/living-room"
+                    created_at: "2026-04-05T12:35:00Z"
+                    updated_at: "2026-04-05T12:35:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: Устройство с таким external_id уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /devices/{deviceId}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceId'
+
+    get:
+      summary: Получить информацию об устройстве
+      description: Возвращает детальную информацию об устройстве
+      tags:
+        - devices
+      responses:
+        '200':
+          description: Информация об устройстве получена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: Обновить информацию об устройстве
+      description: Обновляет параметры устройства (имя, комнату, конфигурацию)
+      tags:
+        - devices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceUpdate'
+            examples:
+              rename:
+                summary: Переименовать устройство
+                value:
+                  name: "Умная лампа гостиной (обновлено)"
+              move_room:
+                summary: Переместить в другую комнату
+                value:
+                  room_id: "550e8400-e29b-41d4-a716-446655440003"
+              update_config:
+                summary: Обновить конфигурацию
+                value:
+                  config:
+                    polling_interval: 30
+      responses:
+        '200':
+          description: Устройство обновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Удалить устройство
+      description: |
+        Удаляет устройство из системы.
+        После удаления устройство перестаёт отслеживаться.
+      tags:
+        - devices
+      responses:
+        '204':
+          description: Устройство удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/state:
+    parameters:
+      - $ref: '#/components/parameters/DeviceId'
+
+    get:
+      summary: Получить текущее состояние устройства
+      description: |
+        Возвращает текущее состояние устройства из кэша.
+        Для получения истории состояний используйте `/devices/{deviceId}/states`.
+      tags:
+        - devices
+      responses:
+        '200':
+          description: Текущее состояние получено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceState'
+              examples:
+                light_on:
+                  summary: Свет включён
+                  value:
+                    device_id: "550e8400-e29b-41d4-a716-446655440000"
+                    state:
+                      power: "on"
+                      brightness: 75
+                      color: "#FF5733"
+                    reported_at: "2026-04-05T12:34:56Z"
+                thermostat:
+                  summary: Термостат
+                  value:
+                    device_id: "550e8400-e29b-41d4-a716-446655440001"
+                    state:
+                      current_temperature: 22.5
+                      target_temperature: 23.0
+                      mode: "heating"
+                    reported_at: "2026-04-05T12:34:50Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/states:
+    parameters:
+      - $ref: '#/components/parameters/DeviceId'
+
+    get:
+      summary: Получить историю состояний устройства
+      description: |
+        Возвращает историю изменений состояния устройства.
+        Поддерживает пагинацию и фильтрацию по времени.
+      tags:
+        - devices
+      parameters:
+        - name: from
+          in: query
+          description: Начало периода (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: Конец периода (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          description: Количество записей
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+      responses:
+        '200':
+          description: История состояний получена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DeviceState'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/commands:
+    parameters:
+      - $ref: '#/components/parameters/DeviceId'
+
+    post:
+      summary: Отправить команду устройству
+      description: |
+        Отправляет команду на выполнение устройству.
+        Команда ставится в очередь и выполняется асинхронно.
+      tags:
+        - commands
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceCommand'
+            examples:
+              turn_on:
+                summary: Включить устройство
+                value:
+                  command: "turn_on"
+                  parameters: {}
+              turn_on_with_brightness:
+                summary: Включить свет с яркостью
+                value:
+                  command: "turn_on"
+                  parameters:
+                    brightness: 80
+                    color: "#3498db"
+              set_temperature:
+                summary: Установить температуру
+                value:
+                  command: "set_target_temperature"
+                  parameters:
+                    temperature: 22.5
+      responses:
+        '200':
+          description: Команда принята в очередь
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandResult'
+              examples:
+                accepted:
+                  summary: Команда принята
+                  value:
+                    command_id: "cmd-550e8400-e29b-41d4-a716-446655440000"
+                    status: "accepted"
+                    message: "Команда поставлена в очередь"
+                    estimated_completion: "2026-04-05T12:35:05Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Устройство недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /discovery:
+    post:
+      summary: Запустить обнаружение устройств
+      description: |
+        Запускает процесс обнаружения новых устройств в сети.
+        Результаты возвращаются асинхронно через события.
+      tags:
+        - discovery
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                house_id:
+                  type: string
+                  format: uuid
+                  description: ID дома для сканирования
+                protocol:
+                  type: string
+                  enum: [all, mqtt, zigbee, zwave]
+                  default: all
+                  description: Протокол для сканирования
+                timeout_seconds:
+                  type: integer
+                  default: 60
+                  description: Таймаут сканирования
+            examples:
+              scan_all:
+                summary: Сканировать все протоколы
+                value:
+                  house_id: "550e8400-e29b-41d4-a716-446655440001"
+                  protocol: "all"
+                  timeout_seconds: 60
+      responses:
+        '200':
+          description: Обнаружение запущено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  discovery_id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [started, in_progress]
+                  estimated_completion:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    get:
+      summary: Получить результаты обнаружения
+      description: Возвращает результаты последнего обнаружения устройств
+      tags:
+        - discovery
+      parameters:
+        - name: discovery_id
+          in: query
+          description: ID процесса обнаружения
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Результаты обнаружения
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  discovery_id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [in_progress, completed, failed]
+                  found_devices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        external_id:
+                          type: string
+                        protocol:
+                          type: string
+                        name:
+                          type: string
+                        manufacturer:
+                          type: string
+                        model:
+                          type: string
+                        is_supported:
+                          type: boolean
+        '404':
+          description: Обнаружение не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /types:
+    get:
+      summary: Получить список типов устройств
+      description: |
+        Возвращает справочник типов устройств,
+        поддерживаемых системой.
+      tags:
+        - types
+      parameters:
+        - name: category
+          in: query
+          description: Фильтр по категории
+          schema:
+            type: string
+            enum: [sensor, actuator, controller, camera]
+        - name: protocol
+          in: query
+          description: Фильтр по протоколу
+          schema:
+            type: string
+            enum: [mqtt, zigbee, zwave, wifi, http]
+      responses:
+        '200':
+          description: Список типов устройств
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DeviceType'
+              examples:
+                sensors:
+                  summary: Датчики
+                  value:
+                    data:
+                      - id: "type-001"
+                        category: "sensor"
+                        name: "Температурный датчик"
+                        manufacturer: "Xiaomi"
+                        model: "THSensor"
+                        protocol: "zigbee"
+                        capabilities:
+                          supports_temperature: true
+                          supports_humidity: true
+                      - id: "type-002"
+                        category: "sensor"
+                        name: "Датчик движения"
+                        manufacturer: "Aqara"
+                        model: "MotionSensor"
+                        protocol: "zigbee"
+                        capabilities:
+                          supports_motion: true
+                          supports_illuminance: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT токен авторизации.
+
+        Получение токена через Auth Service:
+        ```
+        POST /auth/login
+        {
+          "email": "user@example.com",
+          "password": "password"
+        }
+        ```
+
+  parameters:
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      description: Уникальный идентификатор устройства
+      schema:
+        type: string
+        format: uuid
+      example: "550e8400-e29b-41d4-a716-446655440000"
+
+  schemas:
+    Device:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Уникальный идентификатор устройства
+        house_id:
+          type: string
+          format: uuid
+          description: ID дома
+        room_id:
+          type: string
+          format: uuid
+          description: ID комнаты (опционально)
+          nullable: true
+        device_type_id:
+          type: string
+          format: uuid
+          description: ID типа устройства
+        name:
+          type: string
+          description: Название устройства
+        external_id:
+          type: string
+          description: Внешний ID устройства
+        connection_status:
+          type: string
+          enum: [online, offline, error]
+          description: Статус подключения
+        battery_level:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: Уровень батареи (%)
+        firmware_version:
+          type: string
+          nullable: true
+          description: Версия прошивки
+        last_seen:
+          type: string
+          format: date-time
+          nullable: true
+          description: Последняя активность
+        config:
+          type: object
+          description: Конфигурация устройства
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+          description: Дата создания
+        updated_at:
+          type: string
+          format: date-time
+          description: Дата обновления
+      required:
+        - id
+        - house_id
+        - device_type_id
+        - name
+        - external_id
+        - connection_status
+
+    DeviceCreate:
+      type: object
+      properties:
+        house_id:
+          type: string
+          format: uuid
+        device_type_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        external_id:
+          type: string
+          maxLength: 255
+        room_id:
+          type: string
+          format: uuid
+          nullable: true
+        config:
+          type: object
+          additionalProperties: true
+      required:
+        - house_id
+        - device_type_id
+        - name
+        - external_id
+
+    DeviceUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        room_id:
+          type: string
+          format: uuid
+          nullable: true
+        config:
+          type: object
+          additionalProperties: true
+
+    DeviceType:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        category:
+          type: string
+          enum: [sensor, actuator, controller, camera]
+        name:
+          type: string
+        manufacturer:
+          type: string
+        model:
+          type: string
+        protocol:
+          type: string
+          enum: [mqtt, zigbee, zwave, wifi, http]
+        capabilities:
+          type: object
+          additionalProperties: true
+
+    DeviceState:
+      type: object
+      properties:
+        device_id:
+          type: string
+          format: uuid
+        state:
+          type: object
+          description: Текущее состояние (зависит от типа устройства)
+          additionalProperties: true
+        reported_at:
+          type: string
+          format: date-time
+      required:
+        - device_id
+        - state
+        - reported_at
+
+    DeviceCommand:
+      type: object
+      properties:
+        command:
+          type: string
+          description: Тип команды
+          enum: [turn_on, turn_off, set_value, set_parameter, get_state]
+        parameters:
+          type: object
+          description: Параметры команды
+          additionalProperties: true
+      required:
+        - command
+
+    CommandResult:
+      type: object
+      properties:
+        command_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [accepted, pending, completed, failed]
+        message:
+          type: string
+        estimated_completion:
+          type: string
+          format: date-time
+          nullable: true
+        result:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+      required:
+        - error
+        - message
+
+  responses:
+    BadRequest:
+      description: Неверный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            validation_error:
+              value:
+                error: "Bad Request"
+                message: "Ошибка валидации"
+                details:
+                  name: "Поле 'name' обязательно для заполнения"
+
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Unauthorized"
+            message: "Требуется авторизация"
+
+    Forbidden:
+      description: Доступ запрещён
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Forbidden"
+            message: "Нет доступа к этому ресурсу"
+
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Not Found"
+            message: "Устройство не найдено"

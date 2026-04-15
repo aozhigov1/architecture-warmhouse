@@ -1,0 +1,886 @@
+asyncapi: '2.6.0'
+info:
+  title: Warmhouse Event Bus
+  description: |
+    Асинхронные события для экосистемы Warmhouse.
+
+    **Назначение:**
+    - Событийно-ориентированная архитектура для микросервисов
+    - Развязка сервисов через Message Broker
+    - Поддержка сценариев автоматизации
+    - Телеметрия и уведомления
+
+    **Message Broker:** RabbitMQ / Kafka
+    **Протокол:** AMQP
+  version: 1.0.0
+
+servers:
+  local:
+    url: amqp://localhost:5672
+    protocol: amqp
+    description: Local development
+
+channels:
+  device.state.changed:
+    description: |
+      Событие изменения состояния любого устройства.
+      Это главное событие для триггеров сценариев.
+    publish:
+      summary: Опубликовать изменение состояния устройства
+      message:
+        $ref: '#/components/messages/DeviceStateChanged'
+    subscribe:
+      summary: Подписаться на изменения состояния устройств
+      message:
+        $ref: '#/components/messages/DeviceStateChanged'
+
+  device.connected:
+    description: Событие подключения нового устройства
+    publish:
+      summary: Опубликовать событие подключения
+      message:
+        $ref: '#/components/messages/DeviceConnected'
+
+  device.disconnected:
+    description: Событие отключения устройства
+    publish:
+      summary: Опубликовать событие отключения
+      message:
+        $ref: '#/components/messages/DeviceDisconnected'
+
+  device.command.sent:
+    description: Событие отправки команды устройству
+    publish:
+      summary: Опубликовать событие отправки команды
+      message:
+        $ref: '#/components/messages/DeviceCommandSent'
+
+  device.command.completed:
+    description: Событие завершения выполнения команды
+    publish:
+      summary: Опубликовать результат выполнения
+      message:
+        $ref: '#/components/messages/DeviceCommandCompleted'
+
+  heating.mode.changed:
+    description: Событие изменения режима отопления
+    publish:
+      summary: Опубликовать изменение режима
+      message:
+        $ref: '#/components/messages/HeatingModeChanged'
+
+  heating.temperature.target.changed:
+    description: Событие изменения целевой температуры
+    publish:
+      summary: Опубликовать изменение целевой температуры
+      message:
+        $ref: '#/components/messages/HeatingTargetChanged'
+
+  heating.schedule.triggered:
+    description: Событие срабатывания расписания отопления
+    publish:
+      summary: Опубликовать событие расписания
+      message:
+        $ref: '#/components/messages/HeatingScheduleTriggered'
+
+  lighting.scene.activated:
+    description: Событие активации сцены освещения
+    publish:
+      summary: Опубликовать активацию сцены
+      message:
+        $ref: '#/components/messages/LightingSceneActivated'
+
+  surveillance.motion.detected:
+    description: Событие обнаружения движения камерой
+    publish:
+      summary: Опубликовать обнаружение движения
+      message:
+        $ref: '#/components/messages/SurveillanceMotionDetected'
+    subscribe:
+      summary: Подписаться на события движения
+      message:
+        $ref: '#/components/messages/SurveillanceMotionDetected'
+
+  surveillance.recording.started:
+    description: Событие начала записи камеры
+    publish:
+      summary: Опубликовать начало записи
+      message:
+        $ref: '#/components/messages/SurveillanceRecordingStarted'
+
+  surveillance.recording.completed:
+    description: Событие завершения записи камеры
+    publish:
+      summary: Опубликовать завершение записи
+      message:
+        $ref: '#/components/messages/SurveillanceRecordingCompleted'
+
+  scenario.triggered:
+    description: Событие триггера сценария
+    publish:
+      summary: Опубликовать триггер сценария
+      message:
+        $ref: '#/components/messages/ScenarioTriggered'
+
+  scenario.executed:
+    description: Событие успешного выполнения сценария
+    publish:
+      summary: Опубликовать успешное выполнение
+      message:
+        $ref: '#/components/messages/ScenarioExecuted'
+    subscribe:
+      summary: Подписаться на выполнение сценариев
+      message:
+        $ref: '#/components/messages/ScenarioExecuted'
+
+  scenario.failed:
+    description: Событие неудачного выполнения сценария
+    publish:
+      summary: Опубликовать неудачное выполнение
+      message:
+        $ref: '#/components/messages/ScenarioFailed'
+
+  telemetry.data.received:
+    description: Событие получения телеметрических данных
+    publish:
+      summary: Опубликовать телеметрические данные
+      message:
+        $ref: '#/components/messages/TelemetryDataReceived'
+    subscribe:
+      summary: Подписаться на телеметрические данные
+      message:
+        $ref: '#/components/messages/TelemetryDataReceived'
+
+  notification.send:
+    description: Команда на отправку уведомления пользователю
+    publish:
+      summary: Отправить уведомление
+      message:
+        $ref: '#/components/messages/NotificationSend'
+    subscribe:
+      summary: Подписаться на команды уведомлений
+      message:
+        $ref: '#/components/messages/NotificationSend'
+
+components:
+  messages:
+    DeviceStateChanged:
+      name: DeviceStateChanged
+      title: Состояние устройства изменилось
+      summary: Событие изменения состояния любого устройства
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/DeviceStateChangedPayload'
+      examples:
+        - payload:
+            event_id: "550e8400-e29b-41d4-a716-446655440000"
+            event_type: "device.state.changed"
+            timestamp: "2026-04-05T12:34:56.789Z"
+            device_id: "550e8400-e29b-41d4-a716-446655440001"
+            house_id: "550e8400-e29b-41d4-a716-446655440002"
+            room_id: "550e8400-e29b-41d4-a716-446655440003"
+            device_type: "light"
+            old_state:
+              power: "off"
+              brightness: 0
+            new_state:
+              power: "on"
+              brightness: 75
+              color: "#FF5733"
+            changed_attributes:
+              - "power"
+              - "brightness"
+            source: "user"
+            metadata:
+              source_user_id: "user-001"
+              source_ip: "192.168.1.100"
+
+    DeviceConnected:
+      name: DeviceConnected
+      title: Устройство подключено
+      payload:
+        type: object
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: "device.connected"
+          timestamp:
+            type: string
+            format: date-time
+          device_id:
+            type: string
+            format: uuid
+          house_id:
+            type: string
+            format: uuid
+          connection_type:
+            type: string
+            enum: [mqtt, zigbee, zwave, wifi]
+          ip_address:
+            type: string
+          firmware_version:
+            type: string
+        required:
+          - event_id
+          - event_type
+          - timestamp
+          - device_id
+          - house_id
+
+    DeviceDisconnected:
+      name: DeviceDisconnected
+      title: Устройство отключено
+      payload:
+        type: object
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: "device.disconnected"
+          timestamp:
+            type: string
+            format: date-time
+          device_id:
+            type: string
+            format: uuid
+          house_id:
+            type: string
+            format: uuid
+          reason:
+            type: string
+            enum: [timeout, connection_lost, power_off, user_initiated]
+        required:
+          - event_id
+          - event_type
+          - timestamp
+          - device_id
+          - house_id
+          - reason
+
+    DeviceCommandSent:
+      name: DeviceCommandSent
+      title: Команда устройству отправлена
+      payload:
+        type: object
+        properties:
+          command_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: "device.command.sent"
+          timestamp:
+            type: string
+            format: date-time
+          device_id:
+            type: string
+            format: uuid
+          command:
+            type: string
+          parameters:
+            type: object
+          source:
+            type: string
+            enum: [user, scenario, schedule, automation]
+          source_id:
+            type: string
+            format: uuid
+            description: ID сценария или расписания
+        required:
+          - command_id
+          - event_type
+          - timestamp
+          - device_id
+          - command
+          - source
+
+    DeviceCommandCompleted:
+      name: DeviceCommandCompleted
+      title: Команда устройству выполнена
+      payload:
+        type: object
+        properties:
+          command_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: "device.command.completed"
+          timestamp:
+            type: string
+            format: date-time
+          device_id:
+            type: string
+            format: uuid
+          status:
+            type: string
+            enum: [success, failed, timeout]
+          result:
+            type: object
+            additionalProperties: true
+          error_message:
+            type: string
+          execution_time_ms:
+            type: integer
+        required:
+          - command_id
+          - event_type
+          - timestamp
+          - device_id
+          - status
+
+    HeatingModeChanged:
+      name: HeatingModeChanged
+      title: Режим отопления изменён
+      payload:
+        type: object
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: "heating.mode.changed"
+          timestamp:
+            type: string
+            format: date-time
+          zone_id:
+            type: string
+            format: uuid
+          house_id:
+            type: string
+            format: uuid
+          old_mode:
+            type: string
+            enum: [comfort, eco, away, off]
+          new_mode:
+            type: string
+            enum: [comfort, eco, away, off]
+          source:
+            type: string
+            enum: [user, schedule, scenario]
+        required:
+          - event_id
+          - event_type
+          - timestamp
+          - zone_id
+          - new_mode
+
+    HeatingTargetChanged:
+      name: HeatingTargetChanged
+      title: Целевая температура изменена
+      payload:
+        type: object
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: "heating.temperature.target.changed"
+          timestamp:
+            type: string
+            format: date-time
+          zone_id:
+            type: string
+            format: uuid
+          old_temperature:
+            type: number
+            format: float
+          new_temperature:
+            type: number
+            format: float
+          estimated_time_to_target:
+            type: integer
+            description: Время в минутах
+        required:
+          - event_id
+          - event_type
+          - timestamp
+          - zone_id
+          - new_temperature
+
+    HeatingScheduleTriggered:
+      name: HeatingScheduleTriggered
+      title: Расписание отопления сработало
+      payload:
+        type: object
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: "heating.schedule.triggered"
+          timestamp:
+            type: string
+            format: date-time
+          zone_id:
+            type: string
+            format: uuid
+          schedule_id:
+            type: string
+            format: uuid
+          day_of_week:
+            type: integer
+            minimum: 0
+            maximum: 6
+          triggered_time:
+            type: string
+            pattern: "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
+          mode:
+            type: string
+          target_temperature:
+            type: number
+            format: float
+        required:
+          - event_id
+          - event_type
+          - timestamp
+          - zone_id
+          - mode
+
+    LightingSceneActivated:
+      name: LightingSceneActivated
+      title: Сцена освещения активирована
+      payload:
+        type: object
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: "lighting.scene.activated"
+          timestamp:
+            type: string
+            format: date-time
+          scene_id:
+            type: string
+            format: uuid
+          house_id:
+            type: string
+            format: uuid
+          scene_name:
+            type: string
+          brightness:
+            type: integer
+            minimum: 0
+            maximum: 100
+          color:
+            type: string
+            pattern: "^#[0-9A-Fa-f]{6}$"
+            nullable: true
+          devices_affected:
+            type: array
+            items:
+              type: string
+              format: uuid
+          source:
+            type: string
+            enum: [user, scenario, schedule]
+        required:
+          - event_id
+          - event_type
+          - timestamp
+          - scene_id
+          - house_id
+
+    SurveillanceMotionDetected:
+      name: SurveillanceMotionDetected
+      title: Обнаружено движение
+      payload:
+        type: object
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: "surveillance.motion.detected"
+          timestamp:
+            type: string
+            format: date-time
+          camera_id:
+            type: string
+            format: uuid
+          house_id:
+            type: string
+            format: uuid
+          room_id:
+            type: string
+            format: uuid
+            nullable: true
+          confidence:
+            type: number
+            format: float
+            minimum: 0.0
+            maximum: 1.0
+          snapshot_url:
+            type: string
+            description: URL снимка момента обнаружения
+          duration_seconds:
+            type: integer
+            description: Длительность движения
+        required:
+          - event_id
+          - event_type
+          - timestamp
+          - camera_id
+          - confidence
+
+    SurveillanceRecordingStarted:
+      name: SurveillanceRecordingStarted
+      title: Запись начата
+      payload:
+        type: object
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: "surveillance.recording.started"
+          timestamp:
+            type: string
+            format: date-time
+          camera_id:
+            type: string
+            format: uuid
+          recording_id:
+            type: string
+            format: uuid
+          reason:
+            type: string
+            enum: [schedule, motion, manual]
+          estimated_duration_seconds:
+            type: integer
+        required:
+          - event_id
+          - event_type
+          - timestamp
+          - camera_id
+          - recording_id
+
+    SurveillanceRecordingCompleted:
+      name: SurveillanceRecordingCompleted
+      title: Запись завершена
+      payload:
+        type: object
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: "surveillance.recording.completed"
+          timestamp:
+            type: string
+            format: date-time
+          camera_id:
+            type: string
+            format: uuid
+          recording_id:
+            type: string
+            format: uuid
+          file_path:
+            type: string
+          duration_seconds:
+            type: integer
+          file_size_bytes:
+            type: integer
+          has_motion:
+            type: boolean
+        required:
+          - event_id
+          - event_type
+          - timestamp
+          - camera_id
+          - recording_id
+
+    ScenarioTriggered:
+      name: ScenarioTriggered
+      title: Сценарий триггерирован
+      payload:
+        type: object
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: "scenario.triggered"
+          timestamp:
+            type: string
+            format: date-time
+          scenario_id:
+            type: string
+            format: uuid
+          house_id:
+            type: string
+            format: uuid
+          trigger_event:
+            type: string
+            description: Событие, которое вызвало сценарий
+          conditions_met:
+            type: array
+            items:
+              type: object
+              properties:
+                condition_id:
+                  type: string
+                  format: uuid
+                condition_type:
+                  type: string
+                evaluated:
+                  type: boolean
+                actual_value:
+                  type: string
+        required:
+          - event_id
+          - event_type
+          - timestamp
+          - scenario_id
+          - trigger_event
+
+    ScenarioExecuted:
+      name: ScenarioExecuted
+      title: Сценарий выполнен успешно
+      payload:
+        type: object
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: "scenario.executed"
+          timestamp:
+            type: string
+            format: date-time
+          scenario_id:
+            type: string
+            format: uuid
+          execution_id:
+            type: string
+            format: uuid
+          status:
+            type: string
+            const: "success"
+          actions_executed:
+            type: integer
+          execution_duration_ms:
+            type: integer
+        required:
+          - event_id
+          - event_type
+          - timestamp
+          - scenario_id
+          - execution_id
+
+    ScenarioFailed:
+      name: ScenarioFailed
+      title: Сценарий завершился с ошибкой
+      payload:
+        type: object
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: "scenario.failed"
+          timestamp:
+            type: string
+            format: date-time
+          scenario_id:
+            type: string
+            format: uuid
+          execution_id:
+            type: string
+            format: uuid
+          status:
+            type: string
+            const: "failed"
+          error_type:
+            type: string
+            enum: [condition_failed, action_failed, timeout]
+          error_message:
+            type: string
+          failed_action_id:
+            type: string
+            format: uuid
+            nullable: true
+          actions_executed:
+            type: integer
+          actions_failed:
+            type: integer
+        required:
+          - event_id
+          - event_type
+          - timestamp
+          - scenario_id
+          - error_type
+          - error_message
+
+    TelemetryDataReceived:
+      name: TelemetryDataReceived
+      title: Получены телеметрические данные
+      payload:
+        type: object
+        properties:
+          batch_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: "telemetry.data.received"
+          timestamp:
+            type: string
+            format: date-time
+          house_id:
+            type: string
+            format: uuid
+          data_points:
+            type: array
+            items:
+              type: object
+              properties:
+                device_id:
+                  type: string
+                  format: uuid
+                metric_name:
+                  type: string
+                metric_value:
+                  type: number
+                  format: float
+                unit:
+                  type: string
+                metric_time:
+                  type: string
+                  format: date-time
+              required:
+                - device_id
+                - metric_name
+                - metric_value
+                - metric_time
+          data_points_count:
+            type: integer
+        required:
+          - batch_id
+          - event_type
+          - timestamp
+          - data_points
+          - data_points_count
+
+    NotificationSend:
+      name: NotificationSend
+      title: Отправить уведомление
+      payload:
+        type: object
+        properties:
+          notification_id:
+            type: string
+            format: uuid
+          timestamp:
+            type: string
+            format: date-time
+          user_id:
+            type: string
+            format: uuid
+          house_id:
+            type: string
+            format: uuid
+          type:
+            type: string
+            enum: [push, email, sms]
+          priority:
+            type: string
+            enum: [low, normal, high, urgent]
+            default: normal
+          title:
+            type: string
+          body:
+            type: string
+          data:
+            type: object
+            additionalProperties: true
+            description: Дополнительные данные для шаблона
+          channels:
+            type: object
+            properties:
+              push:
+                type: boolean
+              email:
+                type: boolean
+              sms:
+                type: boolean
+        required:
+          - notification_id
+          - user_id
+          - type
+          - title
+          - body
+
+  schemas:
+    DeviceStateChangedPayload:
+      type: object
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+          const: "device.state.changed"
+        timestamp:
+          type: string
+          format: date-time
+        device_id:
+          type: string
+          format: uuid
+        house_id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+          format: uuid
+          nullable: true
+        device_type:
+          type: string
+          description: Тип устройства (light, thermostat, lock, etc.)
+        old_state:
+          type: object
+          description: Предыдущее состояние
+          additionalProperties: true
+        new_state:
+          type: object
+          description: Новое состояние
+          additionalProperties: true
+        changed_attributes:
+          type: array
+          items:
+            type: string
+          description: Список изменившихся атрибутов
+        source:
+          type: string
+          enum: [user, scenario, schedule, automation, device]
+          description: Источник изменения
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Дополнительная информация
+      required:
+        - event_id
+        - event_type
+        - timestamp
+        - device_id
+        - house_id
+        - device_type
+        - old_state
+        - new_state
+        - source

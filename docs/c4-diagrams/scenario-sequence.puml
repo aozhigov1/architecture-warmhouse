@@ -1,0 +1,121 @@
+@startuml C4_Code_Scenario_Sequence
+
+title Обработка сценария автоматизации (C4 Code - Sequence Diagram)
+
+participant "Message Broker" as Broker
+participant "Event Subscriber" as Subscriber
+participant "Scenario Engine" as Engine
+participant "Condition Evaluator" as Evaluator
+participant "Action Executor" as Executor
+participant "Command Handler" as CommandHandler
+participant "Protocol Adapter" as Adapter
+participant "Устройства" as Devices
+
+Broker -> Subscriber: AMQP Message\ntopic: devices.state.changed\n{deviceId: "sensor-1", value: 22.5, ...}
+Subscriber -> Engine: processEvent(DeviceStateChangedEvent)
+
+Engine -> Engine: findScenariosByTrigger("sensor-1", "value_changed")
+
+note right of Engine
+    Сценарий "Утренний режим":
+
+    УСЛОВИЯ:
+    - Время: 06:00 - 09:00
+    - Датчик движения в гостиной: active
+    - Температура в спальне: < 22°C
+
+    ДЕЙСТВИЯ:
+    - Включить свет в гостиной на 70%
+    - Установить температуру в гостиной: 23°C
+    - Открыть шторы в спальне
+end note
+
+Engine --> Engine: [Scenario: "Morning Mode", Scenario: "Away Mode", ...]
+
+loop Для каждого подходящего сценария
+    Engine -> Evaluator: evaluateConditions(scenario)
+
+    Evaluator -> Evaluator: checkTimeConditions(scenario)
+    Evaluator -> Evaluator: checkDeviceStateConditions(scenario)
+    Evaluator -> Evaluator: checkCustomConditions(scenario)
+
+    alt Все условия выполнены
+        Evaluator --> Engine: All conditions met
+        Engine -> Executor: executeActions(scenario.actions)
+
+        loop Для каждого действия в сценарии
+            Executor -> Executor: parseAction(action)
+
+            alt Тип действия: device_command
+                Executor -> CommandHandler: executeCommand(action)
+                CommandHandler -> Adapter: sendCommand(action.command)
+                Adapter -> Devices: Управление устройством
+                Devices --> Adapter: Результат
+                Adapter --> CommandHandler: CommandResult
+                CommandHandler --> Executor: Result
+
+            else Тип действия: delay
+                Executor -> Executor: sleep(action.delayMs)
+
+            else Тип действия: notification
+                Executor -> Executor: sendNotification(action.message)
+
+            else Тип действия: set_variable
+                Executor -> Executor: setVariable(action.name, action.value)
+            end
+
+            Executor -> Executor: logActionExecution(action, result)
+
+            alt Действие выполнилось успешно
+                Executor -> Executor: markActionSuccess(action)
+            else Действие завершилось с ошибкой
+                Executor -> Executor: markActionFailed(action, error)
+
+                alt scenario.onFailure == "stop"
+                    Executor -> Engine: Stop scenario execution
+                else scenario.onFailure == "continue"
+                    Executor -> Engine: Continue with next action
+                end
+            end
+        end
+
+        Executor --> Engine: All actions completed
+        Engine -> Broker: publishEvent(\n  topic: "scenario.executed",\n  {scenarioId: "morning-mode", status: "success"}\n)
+
+    else Условия не выполнены
+        Evaluator --> Engine: Conditions not met
+        Engine -> Engine: skipScenario(scenario)
+    end
+end
+
+Engine -> Engine: logScenarioExecutionResult()
+
+note over Broker, Devices
+    СОБЫТИЕ: Датчик движения в гостиной обнаружил активность
+    ВРЕМЯ: 07:30
+    ТЕКУЩАЯ ТЕМПЕРАТУРА В СПАЛЬНЕ: 21.5°C
+
+    ВЫПОЛНЕНИЕ СЦЕНАРИЯ "Утренний режим":
+
+    1. ✅ Проверка времени: 07:30 в диапазоне 06:00-09:00
+    2. ✅ Проверка датчика движения: active = true
+    3. ✅ Проверка температуры: 21.5°C < 22°C
+
+    ВЫПОЛНЕНИЕ ДЕЙСТВИЙ:
+
+    1. → Включить свет в гостиной на 70%
+       Команда: light-living-room.turnOn(brightness: 70)
+       Результат: ✅ Success
+
+    2. → Установить температуру в гостиной: 23°C
+       Команда: thermostat-living-room.setTargetTemperature(23)
+       Результат: ✅ Success
+
+    3. → Открыть шторы в спальне
+       Команда: blinds-bedroom.open()
+       Результат: ✅ Success
+
+    ИТОГОВЫЙ СТАТУС: ✅ Success
+end note
+
+@enduml

@@ -1,0 +1,28 @@
+@startuml C4_Context
+!include lib/C4_Context.puml
+
+title Контекст приложения "Warmhouse"
+
+Person(user, "Пользователь")
+
+System_Boundary(system, "Приложение", "Монолитное приложение на Go") {
+    System(controltemp, "Управление отоплением/температурой")
+    System(monitor, "Мониторингом температуры")
+}
+
+SystemDb(database, "PostgreSQL", "База данных для хранения\nинформации о датчиках")
+
+System_Ext(temp_api, "Temperature API", "Датчики температуры")
+
+Rel(user, controltemp, "HTTP REST API", "JSON")
+Rel(user, monitor, "HTTP REST API", "JSON")
+Rel(controltemp, database, "JDBC/SQL", "Чтение/запись данных")
+Rel(monitor, temp_api, "HTTP REST API", "Получение данных о температуре")
+
+' Описания
+Rel_Back(user, monitor, "Просмотр мониторинга температуры")
+Rel_Back(user, controltemp, "Управление датчиками")
+Rel_Back(controltemp, database, "Хранение конфигурации датчиков\nи исторических данных")
+Rel_Back(monitor, temp_api, "Получение актуальных данных\nо температуре для локаций")
+
+@enduml
